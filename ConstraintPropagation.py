@@ -1,14 +1,25 @@
-from time import time
 import copy
 
-class SudokuSolver:
+class ConstraintPropagation:
 
     """
     Initializes the Sudoku board's dimensions, expanded cell count,
     cell values, and remaining values given the text in the test file
     """
     def __init__(self, dimension, file):
+        # The dimension/domain of legal values for each cell are the integers [1,dimension]
         self.dimension = dimension
+
+        # If a cell is empty and does not have a legal value assigned to it yet, it will take value 0
+        self.emptyCellValue = 0
+
+        # If a cell's value has been assigned and is fixed at that value, it will take value X
+        self.fixedCellValue = 'X'
+
+        # If a cell has no remaining values in its domain, the domain will take a value higher than the highest
+        # legal cell value to ensure the cell won't be chosen as the next MRV location
+        self.emptyDomainValue = dimension + 1
+
         self.expandedCells = 0
 
         with open(file) as f:
@@ -34,8 +45,8 @@ class SudokuSolver:
     """
     def getDomainLength(self, list):
         # If there is an 'X' in the cell's remaining values list (meaning the cell has a fixed value) or the list is empty
-        if FIXED_CELL in list or list == []:
-            return EMPTY_DOMAIN # Return 10 (to make sure this domain length is not mistakenly seen as the MRV)
+        if self.fixedCellValue in list or list == []:
+            return self.emptyDomainValue
 
         # If the cell has remaining values in its domain, return the length of the domain
         else:
@@ -51,15 +62,15 @@ class SudokuSolver:
         # Find the minimum of the map
         minimum = min(remainingValueMap)
 
-        # If this minimum remaining value is an empty domain,
+        # If this minimum remaining value is an empty domain (in which case the value will be 10 here),
         # this means there are no further cells to assign values to, so return location [-1,-1]
-        if minimum == EMPTY_DOMAIN:
+        if minimum == self.dimension + 1:
             return (-1,-1)
 
         # Otherwise return the location of the cell with the minimum remaining value
         else:
             index = remainingValueMap.index(minimum)
-            return(index // DOMAIN_SIZE, index % DOMAIN_SIZE)
+            return(index // self.dimension, index % self.dimension)
 
     """
     Gets the domain of remaining values for a cell, given the constraints that
@@ -71,13 +82,13 @@ class SudokuSolver:
 
         # For each cell in the same row, remove their values from the domain of the cell we are looking at
         for i in range(self.dimension):
-            if self.board[row][i] != EMPTY_CELL:
+            if self.board[row][i] != self.emptyCellValue:
                 if self.board[row][i] in domain:
                     domain.remove(self.board[row][i])
 
         # For each cell in the same column, remove their values from the domain of the cell we are looking at
         for i in range(self.dimension):
-            if self.board[i][col] != EMPTY_CELL:
+            if self.board[i][col] != self.emptyCellValue:
                 if self.board[i][col] in domain:
                     domain.remove(self.board[i][col])
 
@@ -86,7 +97,7 @@ class SudokuSolver:
         boxCol = col - col%3
         for i in range(3):
             for j in range(3):
-                if self.board[boxRow+i][boxCol+j] != EMPTY_CELL:
+                if self.board[boxRow+i][boxCol+j] != self.emptyCellValue:
                     if self.board[boxRow+i][boxCol+j] in domain:
                         domain.remove(self.board[boxRow+i][boxCol+j])
 
@@ -104,7 +115,7 @@ class SudokuSolver:
             for col in range(self.dimension):
                 # If the cell is already assigned a value, set its domain in the list to value 'X' (to signal its value has been fixed)
                 if self.board[row][col] != '0':
-                    remainingValues.append([FIXED_CELL])
+                    remainingValues.append([self.fixedCellValue])
 
                 # If the cell is still empty, set its domain in the list to be the list of the cell's remaining values
                 else:
@@ -119,7 +130,7 @@ class SudokuSolver:
     """
     def isEmptyDomainProduced(self, row, col):
         # Get location of the given cell in the list
-        cellLocation = row * DOMAIN_SIZE + col
+        cellLocation = row * self.dimension + col
 
         # Extract the cell we have just assigned a new value to
         cell = self.remainingValues.pop(cellLocation)
@@ -139,7 +150,7 @@ class SudokuSolver:
     """
     Solves a Sudoku board using constraint propagation with backtracking and forward checking techniques
     """
-    def solveConstraintPropagation(self):
+    def solve(self):
         # Gets [row, col] location of the cell with the minimum remaining value
         location = self.getNextMRVLocation()
 
@@ -154,7 +165,7 @@ class SudokuSolver:
             col = location[1]
 
             # For each value in that node's list of remaining values
-            for value in self.remainingValues[row * DOMAIN_SIZE + col]:
+            for value in self.remainingValues[row * self.dimension + col]:
                 # Make a copy of the Sudoku board's current remaining values
                 currentState = copy.deepcopy(self.remainingValues)
 
@@ -167,13 +178,13 @@ class SudokuSolver:
                 # If an empty domain is produced, backtrack and return the cell's value back to empty,
                 # restore the Sudoku board's previous remaining values, and try another value assignment
                 if self.isEmptyDomainProduced(row, col):
-                    self.board[row][col] = EMPTY_CELL
+                    self.board[row][col] = self.emptyCellValue
                     self.remainingValues = currentState
 
                 # If there is no empty domain produced as a result of this assignment,
                 # it is a viable choice, so continue assigning values to other cells
                 else:
-                    if self.solveConstraintPropagation():
+                    if self.solve():
                         return True
 
             # If we have tried all possible values for a cell and no viable choice is found,
@@ -185,41 +196,3 @@ class SudokuSolver:
     """
     def solveRelaxationLabeling(self):
         return False
-
-
-"""
-Set up and solve the Sudoku boards using 2 techniques: Constraing Propagation & Relaxation Labeling
-"""
-# The domain of legal values for each cell are the integers [1,9]
-DOMAIN_SIZE = 9
-
-# If a cell is empty and does not have a legal value assigned to it yet, it will take value 0
-EMPTY_CELL = 0
-
-# If a cell has no remaining values in its domain, the domain will take a value higher than the highest
-# legal cell value to ensure the cell won't be chosen as the next MRV location
-EMPTY_DOMAIN = DOMAIN_SIZE + 1
-
-# If a cell's value has been assigned and is fixed at that value, it will take value X
-FIXED_CELL = 'X'
-
-testFile = 'testFiles/game1.txt'
-boardDimension = DOMAIN_SIZE
-
-print("Solving with Constraint Propagation\n-----------------------------------")
-sudokuSolver1 = SudokuSolver(boardDimension, testFile.format())
-start = time()
-isSolved1 = sudokuSolver1.solveConstraintPropagation()
-end = time()
-print(sudokuSolver1)
-print("Time elapsed: {}".format(end - start))
-print("Board was solved: {}\n".format(isSolved1))
-
-print("Solving with Relaxation Labeling\n-----------------------------------")
-sudokuSolver2 = SudokuSolver(boardDimension, testFile.format())
-start = time()
-isSolved2 = sudokuSolver2.solveRelaxationLabeling()
-end = time()
-print(sudokuSolver2)
-print("Time elapsed: {}".format(end - start))
-print("Board was solved: {}\n".format(isSolved2))
